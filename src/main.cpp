@@ -55,8 +55,10 @@ uint32_t EventCnt;
 uint32_t FrameCnt;
 // current pixel data in default rectangle size
 uint32_t CurPixelData[RECT_CY+20][RECT_CX+20];
+uint32_t StandardCurPixelData[RECT_CY+20][RECT_CX+20];
 // captured pixel data in default rectangle size
 uint32_t CapPixelData[RECT_CY+20][RECT_CX+20];
+uint32_t StandardCapPixelData[RECT_CY+20][RECT_CX+20];
 // update flag for CurPixelData
 AU_BOOL UpdateFlag = False;
 
@@ -77,7 +79,7 @@ AU_BOOL FirstInput = False;
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 // file to write log info for debug
-ofstream log;
+ofstream log_file;
 // file to write ultimate recorded data for replayer
 ofstream RecordFile;
 // file to read ultimate recorded data for replayer
@@ -273,8 +275,8 @@ int main(int argc, char *argv[])
     }
     ClientToAU.open("./framein/UsrIn.pkts");
     ServerToAU.open("./framein/VncOut.pkts");
-    log.open("./framein/log.txt");
-    if ( !ClientToAU.is_open() || !ServerToAU.is_open() || !log.is_open() ) {
+    log_file.open("./framein/log.txt");
+    if ( !ClientToAU.is_open() || !ServerToAU.is_open() || !log_file.is_open() ) {
         error(True, "Cannot open framein files");
     }
 
@@ -333,7 +335,7 @@ int main(int argc, char *argv[])
     cout << "             STC Main Loop exit" << endl << endl;
 
     if ( (((AU_BOOL *)c_return)) && (((AU_BOOL *)s_return)) ) {
-        log << "All tasks have finished." << endl;
+        log_file << "All tasks have finished." << endl;
     }
 
 
@@ -343,7 +345,7 @@ int main(int argc, char *argv[])
                      (uint32_t)(cbuf_ptr - client_buf));
     ClientToAU.close();
     ServerToAU.close();
-    log.close();
+    log_file.close();
 
     return 0;
 }

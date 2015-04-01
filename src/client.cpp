@@ -29,6 +29,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "main.h"
+#include <math.h>
 
 /* write back client buffer */
 void WriteClientBuf()
@@ -130,11 +131,11 @@ AU_BOOL PeekSpecialClick(SocketSet *sockset, uint32_t *peek_result, uint16_t
             x_pos = *(uint16_t *)(peek_buf + len + 1 + 1);
             y_pos = *(uint16_t *)(peek_buf + len + 1 + 3);
             pthread_mutex_lock(&mutex);
-            log << "[special click]button_mask: " << hex << (int)button_mask
+            log_file << "[special click]button_mask: " << hex << (int)button_mask
                 << " x,y " << (int)x_pos << " " << (int)y_pos
                 << " should be: " << (int)pointer_x << " "
                 << (int)pointer_y << endl;
-            log << "[specialclick]peek_state: " << peek_state << endl;
+            log_file << "[specialclick]peek_state: " << peek_state << endl;
             pthread_mutex_unlock(&mutex);
             if ( button_mask == 0 && peek_state == 0 && x_pos == pointer_x
                  && y_pos == pointer_y ) {
@@ -198,10 +199,10 @@ void InitThreshold()
     }
     PixelThresR.close();
     pthread_mutex_lock(&mutex);
-    log << "Initialize thres_list. len = " << dec << (int)thres_list_len
+    log_file << "Initialize thres_list. len = " << dec << (int)thres_list_len
         << endl;
     for (i = 0; i < thres_list_len; i++) {
-        log << dec << (float)thres_list[i] << endl;
+        log_file << dec << (float)thres_list[i] << endl;
     }
     pthread_mutex_unlock(&mutex);
 }
@@ -223,7 +224,7 @@ void HandleRfbPkt(SocketSet *c_sockset)
     switch (rfb_msg_type) {
       case rfbSetPixelFormat:
         pthread_mutex_lock(&mutex);
-        log << "[Replaying -> HandleRfbPkt] rfbSetPixelFormat message"
+        log_file << "[Replaying -> HandleRfbPkt] rfbSetPixelFormat message"
             << endl;
         pthread_mutex_unlock(&mutex);
         ReplayFile.read((char *)&tmp_msg_buf[1], HSZ_SET_PIXEL_FORMAT - 1);
@@ -232,7 +233,7 @@ void HandleRfbPkt(SocketSet *c_sockset)
         break;
       case rfbFramebufferUpdateRequest:
         pthread_mutex_lock(&mutex);
-        log << "[Replaying -> HandleRfbPkt] rfbFramebufferUpdateRequest"
+        log_file << "[Replaying -> HandleRfbPkt] rfbFramebufferUpdateRequest"
             << " message" << endl;
         pthread_mutex_unlock(&mutex);
         ReplayFile.read((char *)&tmp_msg_buf[1],
@@ -242,14 +243,14 @@ void HandleRfbPkt(SocketSet *c_sockset)
         break;
       case rfbKeyEvent:
         pthread_mutex_lock(&mutex);
-        log << "[Replaying -> HandleRfbPkt] rfbKeyEvent message" << endl;
+        log_file << "[Replaying -> HandleRfbPkt] rfbKeyEvent message" << endl;
         pthread_mutex_unlock(&mutex);
         ReplayFile.read((char *)&tmp_msg_buf[1], HSZ_KEY_EVENT - 1);
         WriteSocket(c_sockset->SocketToServer, tmp_msg_buf, HSZ_KEY_EVENT);
         break;
       case rfbPointerEvent:
         pthread_mutex_lock(&mutex);
-        log << "[Replaying -> HandleRfbPkt] rfbPointerEvent message"
+        log_file << "[Replaying -> HandleRfbPkt] rfbPointerEvent message"
             << endl;
         pthread_mutex_unlock(&mutex);
         ReplayFile.read((char *)&tmp_msg_buf[1], HSZ_POINTER_EVENT - 1);
@@ -274,17 +275,17 @@ void GetThreshold()
     RfbFrameThres = thres_list[FrameCnt];
 
     pthread_mutex_lock(&mutex);
-    log << "[Replaying -> GetThreshold] RfbFrameThres = " << dec
+    log_file << "[Replaying -> GetThreshold] RfbFrameThres = " << dec
         << RfbFrameThres << endl;
     pthread_mutex_unlock(&mutex);
 }
 
-/* assignment CapPixelData by read data from RectFramePixelR */
+/* assignment StandardCapPixelData by read data from RectFramePixelR */
 void GetTargetFrame()
 {
     unsigned char bmp_head[54];
 
-    memset(CapPixelData[0], 0, sizeof(CapPixelData));
+    memset(StandardCapPixelData[0], 0, sizeof(StandardCapPixelData));
     memset(bmp_head, 0, sizeof(bmp_head));
 
     sprintf(pathRectFramePixel, "framein/fb%06u_raw.bmp", FrameCnt);
@@ -296,7 +297,7 @@ void GetTargetFrame()
     }
     // read .bmp file head
     RectFramePixelR.read((char *)bmp_head, sizeof(bmp_head));
-    RectFramePixelR.read((char *)CapPixelData[0], sizeof(CapPixelData));
+    RectFramePixelR.read((char *)StandardCapPixelData[0], sizeof(StandardCapPixelData));
     if ( (RectFramePixelR.rdstate() && (RectFramePixelR.fail() ||
           RectFramePixelR.bad())) != 0) {
         error(True, "[Replaying -> GetTargetFrame] there is something wrong"
@@ -305,11 +306,33 @@ void GetTargetFrame()
     RectFramePixelR.close();
 
     pthread_mutex_lock(&mutex);
-    log << "[Replaying -> GetTargetFrame] RfbFrameThres = " << dec
+    log_file << "[Replaying -> GetTargetFrame] RfbFrameThres = " << dec
         << RfbFrameThres << "  FrameCnt = " << (int)FrameCnt << endl;
     pthread_mutex_unlock(&mutex);
 }
+void FrameToStandardFormat(unsigned char * frame,unsigned char * standardFrame )
+{	
+    memset((void*)standardFrame, 0, sizeof(CapPixelData));
+    PixelFormat *format = &si.format;
+    uint32_t redNBits = log2(format->redMax + 1);
+    uint32_t greenNBits = log2(format->greenMax + 1);
+    uint32_t blueNBits = log2(format->blueMax + 1);
+   
+    for (uint32_t i = 0; i < sizeof(CapPixelData)/4 ; i++)
+    {
+	uint32_t color_packed = *(uint32_t*) frame;
+	unsigned char red= (color_packed >> format->redShift) & format->redMax; //first 5 bits
+	unsigned char green= (color_packed >> format->greenShift)& format->greenMax; //second 5 bits
+	unsigned char blue= (color_packed >> format->blueShift) &format->blueMax; //last 5 bits
+	
+	
+	uint32_t unpacked_color = (blue << (8-blueNBits)) | (green << (16-greenNBits)) | (red << (24-redNBits)) | (0xff << 24);
+	*(uint32_t*) standardFrame = unpacked_color;
+	frame+=4;
+	standardFrame+=4;
 
+    }
+}
 /* Compare the diff between CapPixelData and CurPixelData
  * Return True is matched(True), otherwise return un-matched(False) */
 AU_BOOL TryMatchFrame()
@@ -327,14 +350,16 @@ AU_BOOL TryMatchFrame()
     #endif
 
     pthread_mutex_lock(&mutex);
-    log << "[Replaying -> TryMatchFrame] Compare the diff between CapPixelData"
+    log_file << "[Replaying -> TryMatchFrame] Compare the diff between CapPixelData"
         << " and CurPixelData(framecnt=" << dec << (int)FrameCnt << ")"
         << endl;
+    if (si.format.bitsPerPixel != 32)
+    	FrameToStandardFormat((unsigned char *)CurPixelData, (unsigned char *)StandardCurPixelData);
     num_px_diff = FrameCompare();
     threshold = 1 - ((num_px_diff*1.0)/sum_px);
-    log << "   threshold = " << setprecision(6) << threshold << endl;
-    log << "   RfbFrameThres = " << RfbFrameThres << endl;
-    log << "   num_px_diff = " << dec << (int)num_px_diff << "  sum_px = "
+    log_file << "   threshold = " << setprecision(6) << threshold << endl;
+    log_file << "   RfbFrameThres = " << RfbFrameThres << endl;
+    log_file << "   num_px_diff = " << dec << (int)num_px_diff << "  sum_px = "
         << (int)sum_px << endl;
     pthread_mutex_unlock(&mutex);
 
@@ -385,7 +410,7 @@ AU_BOOL SendReplayerInput(SocketSet *c_sockset)
         switch (replay_type) {
           case rfbPkt:
             pthread_mutex_lock(&mutex);
-            log << "[Replaying] handling a rfbPkt" << endl;
+            log_file << "[Replaying] handling a rfbPkt" << endl;
             pthread_mutex_unlock(&mutex);
             if ((ReplayFile.rdstate() && (ReplayFile.fail() ||
                  ReplayFile.bad())) != 0) {
@@ -396,7 +421,7 @@ AU_BOOL SendReplayerInput(SocketSet *c_sockset)
             break;
           case timewaitPkt:
             pthread_mutex_lock(&mutex);
-            log << "[Replaying] handling a timewaitPkt" << endl;
+            log_file << "[Replaying] handling a timewaitPkt" << endl;
             pthread_mutex_unlock(&mutex);
             if ((ReplayFile.rdstate() && (ReplayFile.fail() ||
                 ReplayFile.bad())) != 0) {
@@ -408,7 +433,7 @@ AU_BOOL SendReplayerInput(SocketSet *c_sockset)
             break;
           case timesyncPkt:
             pthread_mutex_lock(&mutex);
-            log << "[Replaying] handling a timesyncPkt" << endl;
+            log_file << "[Replaying] handling a timesyncPkt" << endl;
             pthread_mutex_unlock(&mutex);
             if ((ReplayFile.rdstate() && (ReplayFile.fail() ||
                 ReplayFile.bad())) != 0) {
@@ -422,7 +447,7 @@ AU_BOOL SendReplayerInput(SocketSet *c_sockset)
             // sleep 200ms between two ReplayerInput framewaitPkt
             //usleep(2*1000*1000);
             pthread_mutex_lock(&mutex);
-            log << "[Replaying] handling a framewaitPkt" << endl;
+            log_file << "[Replaying] handling a framewaitPkt" << endl;
             pthread_mutex_unlock(&mutex);
             GetThreshold();
             GetTargetFrame();
@@ -436,18 +461,18 @@ AU_BOOL SendReplayerInput(SocketSet *c_sockset)
             break;
           case ddelayPkt:
             pthread_mutex_lock(&mutex);
-            log << "[Replaying] handling a ddelayPkt" << endl;
+            log_file << "[Replaying] handling a ddelayPkt" << endl;
             pthread_mutex_unlock(&mutex);
             break;
           case chkpointPkt:
             pthread_mutex_lock(&mutex);
-            log << "[Replaying] handling a chkpointPkt" << endl;
+            log_file << "[Replaying] handling a chkpointPkt" << endl;
             pthread_mutex_unlock(&mutex);
             break;
           case exitPkt:
             pthread_mutex_lock(&mutex);
-            log << "[Replaying] handling a exitPkt" << endl;
-            log << "            exit Replaying mode " << endl;
+            log_file << "[Replaying] handling a exitPkt" << endl;
+            log_file << "            exit Replaying mode " << endl;
             pthread_mutex_unlock(&mutex);
 
             // exit replay mode after a exitPkt appeared
@@ -490,6 +515,8 @@ void HandleReplayerInput(SocketSet *c_sockset)
         switch (i) {
           case 0:
             // timeout
+            GetThreshold();
+            GetTargetFrame();
             match = TryMatchFrame();
             if (match) {
                 WaitForFrame = False;
@@ -508,27 +535,29 @@ void HandleReplayerInput(SocketSet *c_sockset)
                 pthread_mutex_lock(&mutex);
                 TmpPixelData.write((char *)&TmpBMPHead, sizeof(TmpBMPHead));
                 TmpPixelData.write((char *)&CurPixelData[0],
-                    sizeof(CurPixelData));
+                    sizeof(StandardCurPixelData));
                 pthread_mutex_unlock(&mutex);
                 TmpPixelData.close();
                 sprintf(pathFrameCheck, "framein/fb%06u_raw_Capture.bmp",
                         FrameCnt);
                 TmpPixelData.open(pathFrameCheck);
                 TmpPixelData.write((char *)&TmpBMPHead, sizeof(TmpBMPHead));
-                TmpPixelData.write((char *)&CapPixelData[0],
-                    sizeof(CapPixelData));
+                TmpPixelData.write((char *)&StandardCapPixelData[0],
+                    sizeof(StandardCapPixelData));
                 TmpPixelData.close();
             }
             break;
           case 1:
             // socket can be read now
+	    GetThreshold();
+            GetTargetFrame();
             match = TryMatchFrame();
             if (match) {
                 WaitForFrame = False;
                 FrameCnt++;
             }
             pthread_mutex_lock(&mutex);
-            log << "a new pixel data received, TryMatchFrame again."
+            log_file << "a new pixel data received, TryMatchFrame again."
                 << "  WaitForFrame = " << dec << (int)WaitForFrame << endl;
 
             pthread_mutex_unlock(&mutex);
@@ -564,7 +593,7 @@ AU_BOOL HandleSpecialKeys(uint32_t cur_key, AU_BOOL CtrlPressed,
                 cout << "####  Start Record  ####" << endl;
 
                 pthread_mutex_lock(&mutex);
-                log << "####  Start Record  ####" << endl;
+                log_file << "####  Start Record  ####" << endl;
                 pthread_mutex_unlock(&mutex);
                 RecordFile.open("./framein/icapture_rfb.ibin");
                 PixelThres.open("./framein/fb.thres");
@@ -573,11 +602,11 @@ AU_BOOL HandleSpecialKeys(uint32_t cur_key, AU_BOOL CtrlPressed,
                 }
             } else {
                 pthread_mutex_lock(&mutex);
-                log << "EventCnt captured: " << dec << (int)EventCnt
+                log_file << "EventCnt captured: " << dec << (int)EventCnt
                     << endl;
-                log << "FrameCnt captured: " << dec << (int)FrameCnt
+                log_file << "FrameCnt captured: " << dec << (int)FrameCnt
                     << endl;
-                log << "####  End Record    ####" << endl;
+                log_file << "####  End Record    ####" << endl;
                 pthread_mutex_unlock(&mutex);
                 cout << "   insert a exitPkt by default  " << endl;
                 cout << "####  End Record    ####" << endl;
@@ -603,7 +632,7 @@ AU_BOOL HandleSpecialKeys(uint32_t cur_key, AU_BOOL CtrlPressed,
                 cout << "####  Start Replay  ####" << endl;
 
                 pthread_mutex_lock(&mutex);
-                log << "####  Start Replay  ####" << endl;
+                log_file << "####  Start Replay  ####" << endl;
                 pthread_mutex_unlock(&mutex);
                 ReplayFile.open("./framein/icapture_rfb.ibin");
                 if (!ReplayFile.is_open()) {
@@ -613,9 +642,9 @@ AU_BOOL HandleSpecialKeys(uint32_t cur_key, AU_BOOL CtrlPressed,
             }
 /*            else {
                 pthread_mutex_lock(&mutex);
-                log << "EventCnt captured: " << dec << (int)EventCnt << endl;
-                log << "FrameCnt captured: " << dec << (int)FrameCnt << endl;
-                log << "####  End Replay    ####" << endl;
+                log_file << "EventCnt captured: " << dec << (int)EventCnt << endl;
+                log_file << "FrameCnt captured: " << dec << (int)FrameCnt << endl;
+                log_file << "####  End Replay    ####" << endl;
                 pthread_mutex_unlock(&mutex);
                 cout << "####  End Replay    ####" << endl;
                 ReplayFile.close();
@@ -630,7 +659,7 @@ AU_BOOL HandleSpecialKeys(uint32_t cur_key, AU_BOOL CtrlPressed,
             cout << "Capture a chkpointPkt" << endl;
             if (Recording) {
                 pthread_mutex_lock(&mutex);
-                log << "Capture a chkpointPkt" << endl;
+                log_file << "Capture a chkpointPkt" << endl;
                 pthread_mutex_unlock(&mutex);
                 RecordFile.write(CHECKPOINT_MSG, 1);
             }
@@ -642,7 +671,7 @@ AU_BOOL HandleSpecialKeys(uint32_t cur_key, AU_BOOL CtrlPressed,
             cout << "Capture a exitPkt" << endl;
             if (Recording) {
                 pthread_mutex_lock(&mutex);
-                log << "Capture a exitPkt" << endl;
+                log_file << "Capture a exitPkt" << endl;
                 pthread_mutex_unlock(&mutex);
                 RecordFile.write(EXIT_MSG, 1);
             }
@@ -654,7 +683,7 @@ AU_BOOL HandleSpecialKeys(uint32_t cur_key, AU_BOOL CtrlPressed,
             cout << "Capture a directed delay packet" << endl;
             if (Recording) {
                 pthread_mutex_lock(&mutex);
-                log << "Capture a directed delay packet" << endl;
+                log_file << "Capture a directed delay packet" << endl;
                 pthread_mutex_unlock(&mutex);
                 RecordFile.write(DDELAY_MSG, 1);
             }
@@ -673,7 +702,7 @@ AU_BOOL HandleSpecialKeys(uint32_t cur_key, AU_BOOL CtrlPressed,
     return False;
 }
 
-/* compare CurPixelData and CapPixelData, return the different pixel number
+/* compare StandardCurPixelData and StandardCapPixelData, return the different pixel number
  * this function should been called after pthread_mutex_lock */
 uint32_t FrameCompare()
 {
@@ -682,7 +711,7 @@ uint32_t FrameCompare()
     num_px_diff = 0;
     for (i = RECT_Y; i < RECT_CY; i++) {
         for (j = RECT_X; j < RECT_CX; j++) {
-            if (CurPixelData[i][j] != CapPixelData[i][j]) {
+            if (StandardCurPixelData[i][j] != StandardCapPixelData[i][j]) {
                 num_px_diff++;
             }
         }
@@ -696,7 +725,7 @@ void CaptureFrame()
     pthread_mutex_lock(&mutex);
     memset(CapPixelData[0], 0, sizeof(CurPixelData));
     memcpy(CapPixelData[0], CurPixelData[0], sizeof(CurPixelData));
-    log << "[Recording]Capture a frame pixel data(framecnt=" << dec
+    log_file << "[Recording]Capture a frame pixel data(framecnt=" << dec
         << (int)FrameCnt << ")" << endl;
     pthread_mutex_unlock(&mutex);
 
@@ -708,9 +737,14 @@ void CaptureFrame()
     INIT_BMP(bmphead);
     // write .bmp file head
     RectFramePixel.write((char *)&bmphead, sizeof(bmphead));
-    RectFramePixel.write((char *)CapPixelData[0], sizeof(CapPixelData));
+    if (si.format.bitsPerPixel != 32)
+    	FrameToStandardFormat((unsigned char *)CapPixelData, (unsigned char *)StandardCapPixelData);
+      
+    RectFramePixel.write((char *)StandardCapPixelData[0], sizeof(StandardCapPixelData));
     RectFramePixel.close();
 }
+
+
 
 /* write the computed threshold into PixelThres */
 void WriteThreshold()
@@ -720,15 +754,18 @@ void WriteThreshold()
     sum_px = (RECT_CX - RECT_X) * (RECT_CY - RECT_Y);
 
     pthread_mutex_lock(&mutex);
-    log << "[Recording]Compute threshold for a captured frame(framecnt=" << dec
-        << (int)FrameCnt << ")"  << endl; num_px_diff = FrameCompare();
+    log_file << "[Recording]Compute threshold for a captured frame(framecnt=" << dec
+        << (int)FrameCnt << ")"  << endl; 
+    if (si.format.bitsPerPixel != 32)
+    	FrameToStandardFormat((unsigned char *)CurPixelData, (unsigned char *)StandardCurPixelData);
+    num_px_diff = FrameCompare();
     /* in our tests, we found out the default(0.95) is too small,
      * use 99% instead.
      * --Perth Charles */
     //threshold = 1 - ((num_px_diff + (sum_px - num_px_diff)*0.05)*1.0)/sum_px;
     threshold = 1 - ((num_px_diff + (sum_px - num_px_diff)*0.03)*1.0)/sum_px;
     //threshold = 1 - (num_px_diff*1.0)/sum_px;
-    log << "   threshold = " << setprecision(3) << threshold << endl;
+    log_file << "   threshold = " << setprecision(3) << threshold << endl;
     pthread_mutex_unlock(&mutex);
 
     PixelThres << setprecision(3) << threshold << endl;
@@ -738,7 +775,7 @@ void WriteThreshold()
 void InsertFrameWaitPkt()
 {
     pthread_mutex_lock(&mutex);
-    log << "[Recording]Insert a framewaitPkt(framecnt=" << dec << (int)FrameCnt
+    log_file << "[Recording]Insert a framewaitPkt(framecnt=" << dec << (int)FrameCnt
         << ")" << endl; pthread_mutex_unlock(&mutex);
 
     RecordFile.write(FRAMEWAIT_MSG, 1);
@@ -753,8 +790,9 @@ void InsertTimeWaitPkt()
                (FrameEnd.tv_usec - FrameBegin.tv_usec);
 
     pthread_mutex_lock(&mutex);
-    log << "[Recording]Insert a timewaitPkt(framecnt=" << dec << (int)FrameCnt
-        << ")" << endl; log << " waitTime = 0x" << hex << (int)WaitTime << endl;
+    log_file << "[Recording]Insert a timewaitPkt(framecnt=" << dec << (int)FrameCnt
+        << ")" << endl; 
+    log_file << " waitTime = 0x" << hex << (int)WaitTime << endl;
     pthread_mutex_unlock(&mutex);
 
     RecordFile.write(TIMEWAIT_MSG_HEAD, 1);
@@ -767,7 +805,7 @@ void InsertSyncPkt()
 {
     uint64_t SyncTime = 0;    // insert zero by now --zhongbin
     pthread_mutex_lock(&mutex);
-    log << "[Recording]Insert a timesyncPkt(framecnt=" << dec
+    log_file << "[Recording]Insert a timesyncPkt(framecnt=" << dec
         << (int)FrameCnt << ")" << endl;
     pthread_mutex_unlock(&mutex);
 
@@ -820,9 +858,9 @@ AU_BOOL HandleCTSMsg(SocketSet *c_sockset)
          si.format.bitsPerPixel = (*(uint8_t *)(cbuf_ptr + 4));
 
          pthread_mutex_lock(&mutex);
-         log << "#analyze packages# C-->S:rfbSetPixelFormat"
+         log_file << "#analyze packages# C-->S:rfbSetPixelFormat"
              << "              [Forward]" << endl;
-         log << "  pixel.format.bitsPerPixel: " << dec
+         log_file << "  pixel.format.bitsPerPixel: " << dec
              << (int)si.format.bitsPerPixel << endl;
          pthread_mutex_unlock(&mutex);
          if (Recording) {
@@ -845,7 +883,7 @@ AU_BOOL HandleCTSMsg(SocketSet *c_sockset)
        case rfbSetEncodings:
          #ifdef ANALYZE_PKTS
          pthread_mutex_lock(&mutex);
-         log << "#analyze packages# C-->S:rfbSetEncodings" << endl;
+         log_file << "#analyze packages# C-->S:rfbSetEncodings" << endl;
          pthread_mutex_unlock(&mutex);
          #endif
          // read setencodings msg head
@@ -889,12 +927,12 @@ AU_BOOL HandleCTSMsg(SocketSet *c_sockset)
          // only forward this message when request non-incremental update
          if (incremental == 0) {
              pthread_mutex_lock(&mutex);
-             log << "#analyze packages# C-->S:rfbFramebufferUpdateRequest"
+             log_file << "#analyze packages# C-->S:rfbFramebufferUpdateRequest"
                  << "    [forward]" << endl;
-             log << "[CTSMsg]        rect: " << dec << (int)x_pos << ","
+             log_file << "[CTSMsg]        rect: " << dec << (int)x_pos << ","
                  << (int)y_pos;
-             log << dec << "," << (int)width << "," << (int)height;
-             log << "  incremental:" << dec << (int)incremental << endl;
+             log_file << dec << "," << (int)width << "," << (int)height;
+             log_file << "  incremental:" << dec << (int)incremental << endl;
              pthread_mutex_unlock(&mutex);
 
              if (Recording) {
@@ -959,9 +997,9 @@ AU_BOOL HandleCTSMsg(SocketSet *c_sockset)
          }
 
          pthread_mutex_lock(&mutex);
-         log << "#analyze packages# C-->S:rfbKeyEvent"
+         log_file << "#analyze packages# C-->S:rfbKeyEvent"
              << "                    [Forward]" << endl;
-         log << "   [current mode] " << "Recording:" << dec << (int)Recording
+         log_file << "   [current mode] " << "Recording:" << dec << (int)Recording
              << " Replaying:" << (int)Replaying << endl;
          pthread_mutex_unlock(&mutex);
 
@@ -975,7 +1013,7 @@ AU_BOOL HandleCTSMsg(SocketSet *c_sockset)
                     HSZ_POINTER_EVENT - 1);
 
          pthread_mutex_lock(&mutex);
-         log << "#analyze packages# C-->S:rfbPointerEvent"
+         log_file << "#analyze packages# C-->S:rfbPointerEvent"
              << "                [Forward]" << endl;
          pthread_mutex_unlock(&mutex);
          if (Recording) {
@@ -1031,7 +1069,7 @@ AU_BOOL HandleCTSMsg(SocketSet *c_sockset)
        case rfbClientCutText:
          #ifdef ANALYZE_PKTS
          pthread_mutex_lock(&mutex);
-         log << "#analyze packages# C-->S:rfbClientCutText" << endl;
+         log_file << "#analyze packages# C-->S:rfbClientCutText" << endl;
          pthread_mutex_unlock(&mutex);
          #endif
          // read cuttext msg head

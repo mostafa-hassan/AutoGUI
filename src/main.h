@@ -71,8 +71,10 @@ extern unsigned char *sbuf_ptr;
 extern unsigned char *cbuf_ptr;
 // current pixel data in default rectangle size
 extern uint32_t CurPixelData[RECT_CY+20][RECT_CX+20];
+extern uint32_t StandardCurPixelData[RECT_CY+20][RECT_CX+20];
 // captured pixel data in default rectangle size
 extern uint32_t CapPixelData[RECT_CY+20][RECT_CX+20];
+extern uint32_t StandardCapPixelData[RECT_CY+20][RECT_CX+20];
 extern AU_BOOL UpdateFlag;
 
 // bytes raed from socket
@@ -94,7 +96,7 @@ extern uint32_t EventCnt;
 extern uint32_t FrameCnt;
 
 extern pthread_mutex_t mutex;
-extern ofstream log;
+extern ofstream log_file;
 extern ofstream RecordFile;
 extern ifstream ReplayFile;
 extern ofstream PixelThres;

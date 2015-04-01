@@ -57,10 +57,10 @@ void UpdatePixelData(RectUpdate rect, uint8_t BytesPerPixel)
     unsigned char *tmp_sbuf_ptr = sbuf_ptr;
     switch (BytesPerPixel) {
       case 1:
-        mask = 0xff000000;
+        mask = 0x000000ff;
         break;
       case 2:
-        mask = 0xffff0000;
+        mask = 0x0000ffff;
         break;
       case 4:
         mask = 0xffffffff;
@@ -74,6 +74,7 @@ void UpdatePixelData(RectUpdate rect, uint8_t BytesPerPixel)
             tmp_sbuf_ptr += BytesPerPixel;
         }
     }
+ 
 }
 
 /* return False if socketset are closed by vnc-server or vnc-client,
@@ -111,7 +112,7 @@ AU_BOOL HandleSTCMsg(SocketSet * s_sockset)
         rect_num = Swap16(*((uint16_t *)(sbuf_ptr + 2)));
 
         pthread_mutex_lock(&mutex);
-        log << "#analyze packages# S-->C:rfbFramebufferUpdate"
+        log_file << "#analyze packages# S-->C:rfbFramebufferUpdate"
                "           [Forward]" << endl;
         pthread_mutex_unlock(&mutex);
 
@@ -149,10 +150,10 @@ AU_BOOL HandleSTCMsg(SocketSet * s_sockset)
                      << (int)rect.y_pos << ")" << endl;
             }
 
-            log << "[STCMsg] Rectagle position: " << dec << "[id:" << i << "]"
+            log_file << "[STCMsg] Rectagle position: " << dec << "[id:" << i << "]"
                 << (int)rect.width << "x" << (int)rect.height << " at ("
                 << (int)rect.x_pos << ", " << (int)rect.y_pos << ")" << endl;
-            log << "[STCMsg] si.format.bitsPerPixel[used]: " << dec
+            log_file << "[STCMsg] si.format.bitsPerPixel[used]: " << dec
                 << (int)si.format.bitsPerPixel << endl;
             rect.encoding_type = Swap32(rect.encoding_type);
 
@@ -189,7 +190,7 @@ AU_BOOL HandleSTCMsg(SocketSet * s_sockset)
         break;
       case rfbSetColourMapEntries:
         pthread_mutex_lock(&mutex);
-        log << "#analyze packages# S-->C:rfbSetColourMapEntries"
+        log_file << "#analyze packages# S-->C:rfbSetColourMapEntries"
             << "           [Forward]" << endl;
         pthread_mutex_unlock(&mutex);
 
@@ -219,14 +220,14 @@ AU_BOOL HandleSTCMsg(SocketSet * s_sockset)
         break;
       case rfbBell:
         pthread_mutex_lock(&mutex);
-        log << "#analyze packages# S-->C:rfbBell" << endl;
+        log_file << "#analyze packages# S-->C:rfbBell" << endl;
         pthread_mutex_unlock(&mutex);
 
         sbuf_ptr++;
         break;
       case rfbServerCutText:
         pthread_mutex_lock(&mutex);
-        log << "#analyze packages# S-->C:rfbServerCutText" << endl;
+        log_file << "#analyze packages# S-->C:rfbServerCutText" << endl;
         pthread_mutex_unlock(&mutex);
 
         perror("This message type[rfbServerCutText] should not appear.");
@@ -267,7 +268,7 @@ void *STCMainLoop(void *sockset)
 
     // Enter Server-To-Client Main Loop
     pthread_mutex_lock(&mutex);
-    log << "Enter Server-To-Client Main Loop" << endl;
+    log_file << "Enter Server-To-Client Main Loop" << endl;
     pthread_mutex_unlock(&mutex);
 
     while (true) {
@@ -432,7 +433,7 @@ AU_BOOL InitToServer(struct hostent *server, uint32_t portno, uint32_t sockfd)
             error(True, "ERROR: cannot send version massage");
         }
         pthread_mutex_lock(&mutex);
-        log << "The RFB version used by AutoGUI is :"
+        log_file << "The RFB version used by AutoGUI is :"
             << AU_USED_VER_MSG_38 << endl;
         pthread_mutex_unlock(&mutex);
     }
@@ -503,9 +504,9 @@ AU_BOOL InitToServer(struct hostent *server, uint32_t portno, uint32_t sockfd)
     /* initialize si */
     InitSI(sockfd);
 
-    #ifdef DEBUG
+    //#ifdef DEBUG
     PrintPixelFormat(&si.format);
-    #endif
+    //#endif
 
     /* setup the pixel data format and the encoding of pixel data */
     SetFormatAndEncodings();

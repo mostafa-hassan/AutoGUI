@@ -1,5 +1,5 @@
 CC=g++
-Flags= -Wall -ggdb -lpthread
+Flags= -Wall -ggdb 
 
 
 #all: autogui
@@ -12,6 +12,6 @@ Flags= -Wall -ggdb -lpthread
 #
 
 all: 
-	${CC} ${Flags} *.cpp -o autogui
+	${CC} ${Flags} *.cpp -o autogui -lpthread
 clean:
 	rm -f autogui
