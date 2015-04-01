@@ -502,8 +502,11 @@ void HandleReplayerInput(SocketSet *c_sockset)
     static AU_BOOL WaitForFrame = False;
     AU_BOOL match;
     ofstream TmpPixelData;
+    ofstream TmpPixelData2;
     char pathFrameCheck[1024];
+    char pathFrameCheck2[1024]; 
     memset(pathFrameCheck, 0, sizeof(pathFrameCheck));
+     memset(pathFrameCheck2, 0, sizeof(pathFrameCheck));
 
     if (WaitForFrame) {
         FD_ZERO(&rfds);
@@ -531,13 +534,20 @@ void HandleReplayerInput(SocketSet *c_sockset)
                 INIT_BMP(TmpBMPHead);
                 sprintf(pathFrameCheck, "framein/fb%06u_raw_Current.bmp",
                         FrameCnt);
+                sprintf(pathFrameCheck2, "framein/fb%06u_raw_Current_orig.bmp",
+                        FrameCnt);
                 TmpPixelData.open(pathFrameCheck);
+	 	TmpPixelData2.open(pathFrameCheck2);
                 pthread_mutex_lock(&mutex);
                 TmpPixelData.write((char *)&TmpBMPHead, sizeof(TmpBMPHead));
                 TmpPixelData.write((char *)&StandardCurPixelData[0],
                     sizeof(StandardCurPixelData));
+		TmpPixelData2.write((char *)&TmpBMPHead, sizeof(TmpBMPHead));
+                TmpPixelData2.write((char *)&CurPixelData[0],
+                    sizeof(CurPixelData));
                 pthread_mutex_unlock(&mutex);
                 TmpPixelData.close();
+		TmpPixelData2.close();
                 sprintf(pathFrameCheck, "framein/fb%06u_raw_Capture.bmp",
                         FrameCnt);
                 TmpPixelData.open(pathFrameCheck);
@@ -709,12 +719,25 @@ uint32_t FrameCompare()
     uint32_t num_px_diff;
     uint16_t i, j;
     num_px_diff = 0;
-    for (i = RECT_Y; i < RECT_CY; i++) {
-        for (j = RECT_X; j < RECT_CX; j++) {
-            if (StandardCurPixelData[i][j] != StandardCapPixelData[i][j]) {
-                num_px_diff++;
-            }
-        }
+    if (si.format.bitsPerPixel != 32)
+    {
+	    for (i = RECT_Y; i < RECT_CY; i++) {
+		for (j = RECT_X; j < RECT_CX; j++) {
+		    if (StandardCurPixelData[i][j] != StandardCapPixelData[i][j]) {
+		        num_px_diff++;
+		    }
+		}
+	    }
+    }
+    else
+    {
+	    for (i = RECT_Y; i < RECT_CY; i++) {
+		for (j = RECT_X; j < RECT_CX; j++) {
+		    if (CurPixelData[i][j] != CapPixelData[i][j]) {
+		        num_px_diff++;
+		    }
+		}
+	    }
     }
     return num_px_diff;
 }
