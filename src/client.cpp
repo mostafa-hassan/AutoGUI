@@ -534,7 +534,7 @@ void HandleReplayerInput(SocketSet *c_sockset)
                 TmpPixelData.open(pathFrameCheck);
                 pthread_mutex_lock(&mutex);
                 TmpPixelData.write((char *)&TmpBMPHead, sizeof(TmpBMPHead));
-                TmpPixelData.write((char *)&CurPixelData[0],
+                TmpPixelData.write((char *)&StandardCurPixelData[0],
                     sizeof(StandardCurPixelData));
                 pthread_mutex_unlock(&mutex);
                 TmpPixelData.close();
